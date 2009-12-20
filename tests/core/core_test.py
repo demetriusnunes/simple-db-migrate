@@ -174,7 +174,8 @@ class MigrationTest(unittest.TestCase):
 
     def test_it_should_get_basic_properties_when_path_is_relative3(self):
         # dir changes depending on where you run the tests from (make or TextMate) :(
-        dir = 'tests' if os.path.abspath('.').endswith('tests') else 'simple-db-migrate'
+        # and depends on the name given to project directory
+        dir = os.path.split(os.path.abspath('.'))[1]
         
         migration = Migration(file='../%s/20090727104700_sample_migration.migration' % dir)
         assert migration.version == '20090727104700'
