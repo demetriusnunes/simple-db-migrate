@@ -1,7 +1,6 @@
 from cli import CLI
 from core import Migration, SimpleDBMigrate
 from helpers import Lists
-from mysql import MySQL
 
 class Main(object):
 
@@ -9,9 +8,14 @@ class Main(object):
         self.cli = CLI()
         self.config = config or {}
 
-        self.mysql = mysql
-        if self.mysql is None and not self.config.get("new_migration"):
-            self.mysql = MySQL(config)
+        self.sgdb = mysql
+        if self.sgdb is None and not self.config.get("new_migration"):
+            if self.config.get("db_engine") is 'mysql':
+                from mysql import MySQL
+                self.sgdb = MySQL(config)
+            elif self.config.get("db_engine") is 'oracle':
+                from oracle import Oracle
+                self.sgdb = Oracle(config)
 
         self.db_migrate = db_migrate or SimpleDBMigrate(config)
 
@@ -30,7 +34,7 @@ class Main(object):
 
     def migrate(self):
         destination_version = self.get_destination_version()
-        current_version = self.mysql.get_current_schema_version()
+        current_version = self.sgdb.get_current_schema_version()
 
         self.cli.msg("- Current version is: %s" % current_version, "GREEN")
         self.cli.msg("- Destination version is: %s" % destination_version, "GREEN")
@@ -55,17 +59,17 @@ class Main(object):
         return destination_version
 
     def get_migration_files_to_be_executed(self, current_version, destination_version):
-        mysql_versions = self.mysql.get_all_schema_versions()
+        schema_versions = self.sgdb.get_all_schema_versions()
         migration_versions = self.db_migrate.get_all_migration_versions()
 
         # migration up: the easy part
         if current_version <= destination_version:
-            remaining_versions_to_execute = Lists.subtract(migration_versions, mysql_versions)
+            remaining_versions_to_execute = Lists.subtract(migration_versions, schema_versions)
             remaining_versions_to_execute = [version for version in remaining_versions_to_execute if version <= destination_version]
             return remaining_versions_to_execute
 
         # migration down...
-        down_versions = [version for version in mysql_versions if version <= current_version and version > destination_version]
+        down_versions = [version for version in schema_versions if version <= current_version and version > destination_version]
         for version in down_versions:
             if version not in migration_versions:
                 raise Exception("impossible to migrate down: one of the versions was not found (%s)" % version)
@@ -102,7 +106,7 @@ class Main(object):
                 if self.config.get("log_level") >= 2:
                     log = self.cli.msg
                 
-                self.mysql.change(sql, migration_version, is_migration_up, execution_log=log)
+                self.sgdb.change(sql, migration_version, is_migration_up, execution_log=log)
                 
                 # paused mode
                 if self.config.get("paused_mode"):

@@ -13,10 +13,12 @@ class Config(object):
     def __repr__(self):
         return str(self._config)
 
-    def get(self, config_key):
+    def get(self, config_key, default_value=None):
         try:
             return self._config[config_key]
         except KeyError:
+            if default_value:
+                return default_value
             raise Exception("invalid configuration key ('%s')" % config_key)
             
     def put(self, config_key, config_value):
@@ -69,7 +71,6 @@ class FileConfig(Config):
     
     def __init__(self, config_file="simple-db-migrate.conf"):
         self._config = {}
-        self.put("db_version_table", self.DB_VERSION_TABLE)
         
         # read configuration
         settings = FileConfig.SettingsFile.import_file(config_file)
@@ -79,14 +80,31 @@ class FileConfig(Config):
         self.put("db_password", self.get_variable(settings, 'DATABASE_PASSWORD', 'PASSWORD'))
         self.put("db_name", self.get_variable(settings, 'DATABASE_NAME', 'DATABASE'))
         
+        self.put("db_engine", self.get_variable(settings, 'DATABASE_ENGINE', 'ENGINE', 'mysql'))
+        self.put("db_version_table", self.get_variable(settings, 'DATABASE_VERSION_TABLE', 'VERSION_TABLE', self.DB_VERSION_TABLE))
+        
+        self.get_custom_variables(settings, ['DATABASE_HOST', 'DATABASE_USER', 'DATABASE_PASSWORD', 'DATABASE_ENGINE', 'DATABASE_VERSION_TABLE', 'DATABASE_MIGRATIONS_DIR'])
+        
         migrations_dir = self.get_variable(settings, 'DATABASE_MIGRATIONS_DIR', 'MIGRATIONS_DIR')
         config_dir = os.path.split(config_file)[0]
         self.put("migrations_dir", self._parse_migrations_dir(migrations_dir, config_dir))
-        
-    def get_variable(self, settings, name, old_name):
+    
+    def get_custom_variables(self, settings, default_variables = []):
+        """
+        Put on config var all custom variables present in config file wich starts with DATABASE_ 
+        """
+        p = re.compile("^DATABASE_(?P<name>.*)")
+        for key in settings.keys():
+            m_key = p.match(key)
+            if m_key and key not in default_variables: 
+                self.put("db_%s" % m_key.group('name').lower(), self.get_variable(settings, key,  m_key.group('name')))
+    
+    def get_variable(self, settings, name, old_name, default_value=None):
         if name in settings or old_name in settings:
             return settings.get(name, settings.get(old_name))
         else:
+            if default_value:
+                return default_value
             raise NameError("config file error: name '%s' is not defined" % name)
 
 class InPlaceConfig(Config):
